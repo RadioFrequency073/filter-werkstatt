@@ -158,13 +158,13 @@ var LEVEL_TIME = 120;
 var LEVELS = [
   {
     id: 'lp', name: 'TIEFPASS',
-    desc: 'Der Kunde braucht einen Tiefpass: Signale unterhalb der Grenzfrequenz fc sollen durchkommen, alles darüber wird gedämpft (−20 dB/Dekade). Justiere Widerstand R und Kondensator C so, dass deine Kurve (cyan) die Kundenvorgabe (gelb, gestrichelt) überdeckt.',
-    params: ['R','C']
+    desc: 'Der Kunde braucht einen Tiefpass der 2. Ordnung: Zwei gestaffelte RC-Stufen dämpfen oberhalb der Grenzfrequenz mit −40 dB pro Dekade. Die beide Sperrfrequenzen fc1 und fc2 (aus R1/C1 bzw. R2/C2) bestimmen gemeinsam die Kurvenform: beide gleich = runder Knick, unterschiedlich = Knie. Justiere alle vier Bauteile so, dass deine Kurve (cyan) die Kundenvorgabe (gelb, gestrichelt) überdeckt.',
+    params: ['R1','C1','R2','C2']
   },
   {
     id: 'hp', name: 'HOCHPASS',
-    desc: 'Jetzt ein Hochpass: Tiefe Frequenzen werden blockiert, hohe kommen durch. Auch hier bestimmen R und C die Grenzfrequenz fc — bring deine Kurve auf die gelbe Vorgabe, bevor die Zeit abläuft.',
-    params: ['R','C']
+    desc: 'Jetzt ein zweistufiger Hochpass: Zwei in Reihe geschaltete C–R-Stufen mit −40 dB/Dekade blockieren die tiefen Frequenzen. Die Kondensatoren sitzen im Signalpfad, die Widerstände gegen Masse. Justiere R1, C1, R2 und C2, bis deine Kurve auf der gelben Vorgabe liegt.',
+    params: ['R1','C1','R2','C2']
   },
   {
     id: 'bp', name: 'BANDPASS',
@@ -174,9 +174,13 @@ var LEVELS = [
 ];
 
 var SPEC = {
-  R: { min: 1e3,   max: 1e6,  def: 2e4, label: 'Widerstand R',  unit: 'Ω' },
-  C: { min: 1e-9,  max: 1e-6, def: 1e-7, label: 'Kondensator C', unit: 'F' },
-  L: { min: 1e-3,  max: 1,    def: 1e-2, label: 'Spule L',       unit: 'H' },
+  R1: { min: 1e3,  max: 1e6,  def: 2e4, label: 'Widerstand R1',  unit: 'Ω' },
+  C1: { min: 1e-9, max: 1e-6, def: 1e-7, label: 'Kondensator C1', unit: 'F' },
+  R2: { min: 1e3,  max: 1e6,  def: 5e4, label: 'Widerstand R2',  unit: 'Ω' },
+  C2: { min: 1e-9, max: 1e-6, def: 5e-7, label: 'Kondensator C2', unit: 'F' },
+  R:  { min: 1e3,  max: 1e6,  def: 2e4, label: 'Widerstand R',   unit: 'Ω' },
+  C:  { min: 1e-9, max: 1e-6, def: 1e-7, label: 'Kondensator C',  unit: 'F' },
+  L:  { min: 1e-3, max: 1,    def: 1e-2, label: 'Spule L',        unit: 'H' },
   F: { min: F_MIN, max: F_MAX, def: 1000, label: 'Prüffrequenz',  unit: 'Hz' }
 };
 
@@ -187,25 +191,31 @@ var state = {
   endAt: 0,
   lastTickSec: -1,
   target: null,        // {R,C,L}
-  params: { R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def },
+  params: { R1: SPEC.R1.def, C1: SPEC.C1.def, R2: SPEC.R2.def, C2: SPEC.C2.def, R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def },
   checkFreq: 1000,
   sweeping: false
 };
 
 /* ---------- Bauteil-Berechnung (Übertragungsfunktionen) ---------- */
 
-function fcOf(p){ return 1 / (TWO_PI * p.R * p.C); }
+function stageFc(R, C){ return 1 / (TWO_PI * R * C); }
+function lpStageDB(f, R, C){
+  var x = f / stageFc(R, C);
+  return -10 * Math.log10(1 + x * x);
+}
+function hpStageDB(f, R, C){
+  var x = f / stageFc(R, C);
+  return 20 * Math.log10(x) - 10 * Math.log10(1 + x * x);
+}
 function f0Of(p){ return 1 / (TWO_PI * Math.sqrt(p.L * p.C)); }
 function qOf(p){ return (1 / p.R) * Math.sqrt(p.L / p.C); }
 
 function gainDB(f, type, p){
   if (type === 'lp'){
-    var x = f / fcOf(p);
-    return -10 * Math.log10(1 + x * x);
+    return lpStageDB(f, p.R1, p.C1) + lpStageDB(f, p.R2, p.C2);
   }
   if (type === 'hp'){
-    var x2 = f / fcOf(p);
-    return 20 * Math.log10(x2) - 10 * Math.log10(1 + x2 * x2);
+    return hpStageDB(f, p.R1, p.C1) + hpStageDB(f, p.R2, p.C2);
   }
   var w = TWO_PI * f;
   var num = w * p.R * p.C;
@@ -256,13 +266,7 @@ function el(id){ return document.getElementById(id); }
 function genTarget(type){
   var i, R, C, L;
   if (type === 'lp' || type === 'hp'){
-    for (i = 0; i < 600; i++){
-      R = Math.pow(10, 3 + Math.random() * 3);
-      C = Math.pow(10, -9 + Math.random() * 3);
-      var fc = 1 / (TWO_PI * R * C);
-      if (fc >= 300 && fc <= 8000) return { R: R, C: C, L: null };
-    }
-    return { R: 15915, C: 1e-8, L: null };
+    return genSecondOrder(type);
   }
   for (i = 0; i < 2000; i++){
     R = Math.pow(10, 3 + Math.random() * 3);
@@ -275,10 +279,36 @@ function genTarget(type){
   return { R: 4700, C: 1e-7, L: 0.01 };
 }
 
+function genSecondOrder(type){
+  function randStage(){
+    for (var i = 0; i < 600; i++){
+      var R = Math.pow(10, 3 + Math.random() * 3);
+      var C = Math.pow(10, -9 + Math.random() * 3);
+      var fc = 1 / (TWO_PI * R * C);
+      if (fc >= 300 && fc <= 8000) return { R: R, C: C, fc: fc };
+    }
+    return { R: 15915, C: 1e-8, fc: 1 / (TWO_PI * 15915 * 1e-8) };
+  }
+  function ratio(){
+    return Math.pow(10, -0.4 + Math.random() * 0.8);
+  }
+  var s1 = randStage();
+  var s2 = randStage();
+  var scale = ratio();
+  var t1 = type === 'lp' ? Math.max(s1.fc, s2.fc) : Math.min(s1.fc, s2.fc);
+  var t2 = Math.min(8000, Math.max(300, t1 * scale));
+  for (var i = 0; i < 600; i++){
+    var R = Math.pow(10, 3 + Math.random() * 3);
+    var C = 1 / (TWO_PI * t2 * R);
+    if (C >= 1e-9 && C <= 1e-6) return { R1: s1.R, C1: s1.C, R2: R, C2: C, L: null };
+  }
+  return { R1: s1.R, C1: s1.C, R2: 15915, C2: 1e-8, L: null };
+}
+
 /* ---------- Schaltplan (SVG) ---------- */
 
 function schematicSVG(type){
-  var head = '<svg viewBox="0 0 420 210" xmlns="http://www.w3.org/2000/svg">';
+  var head = '<svg viewBox="0 0 500 240" xmlns="http://www.w3.org/2000/svg">';
   var tail = '</svg>';
   var source =
     '<line class="wire" x1="20" y1="90" x2="40" y2="90"/>' +
@@ -298,33 +328,55 @@ function schematicSVG(type){
 
   if (type === 'lp'){
     return head + source +
-      '<line class="wire" x1="76" y1="90" x2="120" y2="90"/>' +
-      '<rect class="part" x="120" y="76" width="80" height="28"/>' +
-      '<text class="lbl" id="lbl-R" x="160" y="64" text-anchor="middle"></text>' +
-      '<line class="wire" x1="200" y1="90" x2="240" y2="90"/>' +
-      '<circle cx="240" cy="90" r="3.5" fill="#8be9fd"/>' +
-      out(240, 90) +
-      '<line class="wire" x1="240" y1="90" x2="240" y2="132"/>' +
-      '<line class="wire" x1="218" y1="138" x2="262" y2="138"/>' +
-      '<line class="wire" x1="218" y1="150" x2="262" y2="150"/>' +
-      '<text class="lbl" id="lbl-C" x="272" y="148"></text>' +
-      '<line class="wire" x1="240" y1="150" x2="240" y2="168"/>' +
-      ground(240, 172) + tail;
+      '<line class="wire" x1="76" y1="90" x2="90" y2="90"/>' +
+      '<rect class="part" x="90" y="76" width="70" height="28"/>' +
+      '<text class="lbl" id="lbl-R1" x="125" y="64" text-anchor="middle"></text>' +
+      '<line class="wire" x1="160" y1="90" x2="200" y2="90"/>' +
+      '<circle cx="200" cy="90" r="3.5" fill="#8be9fd"/>' +
+      '<line class="wire" x1="200" y1="90" x2="200" y2="132"/>' +
+      '<line class="wire" x1="178" y1="138" x2="222" y2="138"/>' +
+      '<line class="wire" x1="178" y1="150" x2="222" y2="150"/>' +
+      '<text class="lbl" id="lbl-C1" x="230" y="148"></text>' +
+      '<line class="wire" x1="200" y1="150" x2="200" y2="168"/>' +
+      ground(200, 172) +
+      '<line class="wire" x1="200" y1="90" x2="230" y2="90"/>' +
+      '<rect class="part" x="230" y="76" width="70" height="28"/>' +
+      '<text class="lbl" id="lbl-R2" x="265" y="64" text-anchor="middle"></text>' +
+      '<line class="wire" x1="300" y1="90" x2="340" y2="90"/>' +
+      '<circle cx="340" cy="90" r="3.5" fill="#8be9fd"/>' +
+      out(340, 90) +
+      '<line class="wire" x1="340" y1="90" x2="340" y2="132"/>' +
+      '<line class="wire" x1="318" y1="138" x2="362" y2="138"/>' +
+      '<line class="wire" x1="318" y1="150" x2="362" y2="150"/>' +
+      '<text class="lbl" id="lbl-C2" x="370" y="148"></text>' +
+      '<line class="wire" x1="340" y1="150" x2="340" y2="168"/>' +
+      ground(340, 172) + tail;
   }
   if (type === 'hp'){
     return head + source +
-      '<line class="wire" x1="76" y1="90" x2="112" y2="90"/>' +
-      '<line class="wire" x1="118" y1="66" x2="118" y2="114"/>' +
-      '<line class="wire" x1="130" y1="66" x2="130" y2="114"/>' +
-      '<text class="lbl" id="lbl-C" x="124" y="52" text-anchor="middle"></text>' +
-      '<line class="wire" x1="130" y1="90" x2="170" y2="90"/>' +
-      '<circle cx="170" cy="90" r="3.5" fill="#8be9fd"/>' +
-      out(170, 90) +
-      '<line class="wire" x1="170" y1="90" x2="170" y2="110"/>' +
-      '<rect class="part" x="156" y="110" width="28" height="64"/>' +
-      '<text class="lbl" id="lbl-R" x="170" y="196" text-anchor="middle"></text>' +
-      '<line class="wire" x1="170" y1="174" x2="170" y2="212"/>' +
-      ground(170, 216) + tail;
+      '<line class="wire" x1="76" y1="90" x2="88" y2="90"/>' +
+      '<line class="wire" x1="92" y1="66" x2="92" y2="114"/>' +
+      '<line class="wire" x1="104" y1="66" x2="104" y2="114"/>' +
+      '<text class="lbl" id="lbl-C1" x="98" y="52" text-anchor="middle"></text>' +
+      '<line class="wire" x1="104" y1="90" x2="150" y2="90"/>' +
+      '<circle cx="150" cy="90" r="3.5" fill="#8be9fd"/>' +
+      '<line class="wire" x1="150" y1="90" x2="150" y2="110"/>' +
+      '<rect class="part" x="136" y="110" width="28" height="58"/>' +
+      '<text class="lbl" id="lbl-R1" x="176" y="144"></text>' +
+      '<line class="wire" x1="150" y1="168" x2="150" y2="212"/>' +
+      ground(150, 216) +
+      '<line class="wire" x1="150" y1="90" x2="226" y2="90"/>' +
+      '<line class="wire" x1="230" y1="66" x2="230" y2="114"/>' +
+      '<line class="wire" x1="242" y1="66" x2="242" y2="114"/>' +
+      '<text class="lbl" id="lbl-C2" x="236" y="52" text-anchor="middle"></text>' +
+      '<line class="wire" x1="242" y1="90" x2="290" y2="90"/>' +
+      '<circle cx="290" cy="90" r="3.5" fill="#8be9fd"/>' +
+      out(290, 90) +
+      '<line class="wire" x1="290" y1="90" x2="290" y2="110"/>' +
+      '<rect class="part" x="276" y="110" width="28" height="58"/>' +
+      '<text class="lbl" id="lbl-R2" x="316" y="144"></text>' +
+      '<line class="wire" x1="290" y1="168" x2="290" y2="212"/>' +
+      ground(290, 216) + tail;
   }
   /* Bandpass: Reihenschaltung R–L–C, Ausgang über R */
   return head + source +
@@ -355,6 +407,10 @@ function updateSchematic(){
 }
 function setSchematicLabels(){
   var set = function(id, txt){ var n = el(id); if (n) n.textContent = txt; };
+  set('lbl-R1', 'R1 = ' + fmtVal(state.params.R1, 'Ω'));
+  set('lbl-C1', 'C1 = ' + fmtVal(state.params.C1, 'F'));
+  set('lbl-R2', 'R2 = ' + fmtVal(state.params.R2, 'Ω'));
+  set('lbl-C2', 'C2 = ' + fmtVal(state.params.C2, 'F'));
   set('lbl-R', 'R = ' + fmtVal(state.params.R, 'Ω'));
   set('lbl-C', 'C = ' + fmtVal(state.params.C, 'F'));
   set('lbl-L', 'L = ' + fmtVal(state.params.L, 'H'));
@@ -430,10 +486,11 @@ function em(id){ return el(id); }
 
 function updateReadout(){
   var lv = LEVELS[state.level];
+  var p = state.params;
   var html = '<span>Messung @ <b>' + fmtHz(state.checkFreq) + '</b>: ' +
              '<b>' + playerGain(state.checkFreq).toFixed(1).replace('.', ',') + ' dB</b></span>';
   if (lv.id === 'lp' || lv.id === 'hp'){
-    html += '<span>aktuelle Grenzfrequenz fc ≈ <b>' + fmtHz(fcOf(state.params)) + '</b></span>';
+    html += '<span>fc1 ≈ <b>' + fmtHz(stageFc(p.R1, p.C1)) + '</b> · fc2 ≈ <b>' + fmtHz(stageFc(p.R2, p.C2)) + '</b></span>';
   } else {
     html += '<span>f0 ≈ <b>' + fmtHz(f0Of(state.params)) + '</b> · Q ≈ <b>' +
             qOf(state.params).toFixed(2).replace('.', ',') + '</b></span>';
@@ -644,7 +701,7 @@ function showStartScreen(){
     'Die Schaltung ist vorgegeben, aber die Bauteile sind falsch bestückt!</p>' +
     '<ul>' +
     '<li>⏱ <b>2 Minuten</b> pro Auftrag — die Uhr läuft, sobald du startest.</li>' +
-    '<li>🎚 Stelle <b>R, C (und L)</b> per Slider ein, bis deine cyanfarbene Messkurve die gelbe Kundenvorgabe überdeckt.</li>' +
+    '<li>🎚 Stelle die Bauteile per Slider ein (Tief-/Hochpass: R1, C1, R2, C2 · Bandpass: R, L, C), bis deine cyanfarbene Messkurve die gelbe Kundenvorgabe überdeckt.</li>' +
     '<li>📊 Der Sweep-Punkt zeigt dir den Messwert an einer Frequenz. Fahre ihn mit dem Sweep über das Spektrum.</li>' +
     '<li>✅ Bei <b>≥ 85&nbsp;%</b> Überdeckung nimmt die Qualitätsabnahme den Filter ab. Restzeit gibt Bonuspunkte.</li>' +
     '</ul>' +
@@ -659,7 +716,7 @@ function showLevelIntro(){
   el('task-title').textContent = 'AUFTRAG ' + (state.level + 1) + ': ' + lv.name + ' BESTÜCKEN';
   el('task-desc').textContent = lv.desc;
   state.target = genTarget(lv.id);
-  state.params = { R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def };
+  state.params = { R1: SPEC.R1.def, C1: SPEC.C1.def, R2: SPEC.R2.def, C2: SPEC.C2.def, R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def };
   state.checkFreq = 1000;
   state.sweeping = false;
   el('btn-sweep').textContent = '▶ Sweep starten';
