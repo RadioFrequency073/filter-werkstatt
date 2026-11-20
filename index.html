@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filter-Werkstatt – Schaltungssimulation</title>
+<style>
+  :root{
+    --bg:#070b16; --panel:#0d1426; --panel2:#111b33;
+    --cyan:#2de2ff; --yellow:#ffd23f; --green:#00ff8c; --red:#ff5c5c;
+    --text:#e6f1ff; --dim:#7d93b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%, #14224a 0%, var(--bg) 60%);
+    color:var(--text);
+    font-family:"Courier New", ui-monospace, monospace;
+    min-height:100vh;
+  }
+  #app{max-width:1100px; margin:0 auto; padding:14px;}
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    border:2px solid var(--cyan); border-radius:10px; padding:10px 16px;
+    background:linear-gradient(90deg,#0d1426,#14224a);
+    box-shadow:0 0 18px rgba(45,226,255,.25);
+  }
+  h1{
+    font-size:1.35rem; letter-spacing:.15em; color:var(--cyan);
+    text-shadow:0 0 10px rgba(45,226,255,.8);
+  }
+  .hud{display:flex; gap:14px; align-items:center; font-size:.95rem;}
+  .hud b{color:var(--yellow);}
+  .hud .chip{
+    border:1px solid var(--dim); border-radius:6px; padding:4px 10px; background:#0a1122;
+  }
+  #hud-timer.danger{color:var(--red); animation:blink .5s steps(2) infinite;}
+  @keyframes blink{50%{opacity:.25}}
+  main{
+    display:grid; grid-template-columns:1fr 1.2fr; gap:14px; margin-top:14px;
+  }
+  @media (max-width:860px){ main{grid-template-columns:1fr;} }
+  .panel{
+    border:2px solid #233457; border-radius:10px; background:var(--panel); padding:12px;
+  }
+  .panel h2{color:var(--yellow); font-size:1rem; margin-bottom:6px; letter-spacing:.08em;}
+  .panel p{color:var(--dim); font-size:.85rem; line-height:1.45; margin-bottom:8px;}
+  #schematic svg{width:100%; height:auto; display:block;}
+  .wire{stroke:#8be9fd; stroke-width:2; fill:none;}
+  .part{fill:#0b1020; stroke:#8be9fd; stroke-width:2;}
+  .sym{fill:var(--text); font-size:20px; text-anchor:middle; font-family:monospace;}
+  .lbl{fill:var(--yellow); font-size:13px; font-weight:bold; font-family:monospace;}
+  .cap{fill:var(--dim); font-size:12px; font-family:monospace;}
+  canvas{width:100%; display:block; border-radius:6px; background:#050912;}
+  #readout{
+    margin-top:8px; display:flex; flex-wrap:wrap; gap:10px; font-size:.85rem; color:var(--dim);
+  }
+  #readout b{color:var(--cyan);}
+  #controls{
+    margin-top:14px; border:2px solid #233457; border-radius:10px;
+    background:var(--panel2); padding:12px;
+  }
+  .slider-row{
+    display:grid; grid-template-columns:170px 1fr 130px; gap:10px; align-items:center;
+    margin-bottom:8px;
+  }
+  .slider-row label{color:var(--text); font-size:.9rem;}
+  .slider-row .val{color:var(--yellow); text-align:right; font-size:.9rem;}
+  input[type=range]{width:100%; accent-color:var(--cyan); cursor:pointer;}
+  #btn-row{display:flex; gap:12px; margin-top:12px; flex-wrap:wrap; align-items:center;}
+  button{
+    font-family:inherit; font-weight:bold; cursor:pointer;
+    background:linear-gradient(180deg,#1a2c55,#101c38);
+    color:var(--cyan); border:2px solid var(--cyan); border-radius:8px;
+    padding:9px 18px; font-size:.95rem; letter-spacing:.05em;
+    box-shadow:0 0 10px rgba(45,226,255,.2);
+    transition:transform .05s;
+  }
+  button:hover{box-shadow:0 0 16px rgba(45,226,255,.5);}
+  button:active{transform:scale(.97);}
+  button.small{padding:5px 10px; font-size:.8rem;}
+  #match-meter{
+    margin-left:auto; border:1px solid var(--dim); border-radius:6px;
+    padding:6px 14px; font-size:.95rem; background:#0a1122;
+  }
+  #match-meter .bar{
+    display:inline-block; width:90px; height:10px; background:#101c38;
+    border:1px solid var(--dim); vertical-align:middle; margin-left:8px; border-radius:3px;
+  }
+  #match-meter .bar i{display:block; height:100%; background:var(--green); width:0%;}
+  #match-meter .bar i.mid{background:var(--yellow);}
+  #match-meter .bar i.bad{background:var(--red);}
+  #overlay{
+    position:fixed; inset:0; background:rgba(3,6,14,.88); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  #overlay.hidden{display:none;}
+  .card{
+    max-width:560px; width:100%; border:2px solid var(--cyan); border-radius:12px;
+    background:linear-gradient(180deg,#0d1426,#14224a); padding:26px; text-align:center;
+    box-shadow:0 0 30px rgba(45,226,255,.35);
+  }
+  .card h2{color:var(--cyan); font-size:1.5rem; letter-spacing:.1em; margin-bottom:12px;
+    text-shadow:0 0 12px rgba(45,226,255,.7);}
+  .card p{color:var(--dim); font-size:.92rem; line-height:1.55; margin-bottom:14px;}
+  .card .big{color:var(--yellow); font-size:1.2rem;}
+  .card ul{text-align:left; margin:0 auto 16px; display:inline-block; color:var(--dim); font-size:.88rem; line-height:1.7;}
+  footer{margin-top:14px; text-align:center; color:var(--dim); font-size:.75rem;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>⚡ FILTER-WERKSTATT</h1>
+    <div class="hud">
+      <span class="chip" id="hud-level">Level –</span>
+      <span class="chip">Zeit <b id="hud-timer">02:00</b></span>
+      <span class="chip">Punkte <b id="hud-score">0</b></span>
+      <button id="btn-music" class="small">🎵 Musik: AUS</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2 id="task-title">AUFGABE</h2>
+      <p id="task-desc"></p>
+      <div id="schematic"></div>
+    </section>
+    <section class="panel">
+      <h2>BODE-DIAGRAMM – MESSENGEBER 20 Hz … 20 kHz</h2>
+      <canvas id="plot" width="680" height="330"></canvas>
+      <div id="readout"></div>
+    </section>
+  </main>
+
+  <div id="controls">
+    <div id="sliders"></div>
+    <div id="btn-row">
+      <button id="btn-sweep">▶ Sweep starten</button>
+      <button id="btn-check">✅ Filter abnehmen</button>
+      <div id="match-meter">Überdeckung: – % <span class="bar"><i id="match-bar"></i></span></div>
+    </div>
+  </div>
+
+  <footer>Entwicklungsabteilung · Simulation läuft lokal · Tiefpass · Hochpass · Bandpass</footer>
+</div>
+
+<div id="overlay" class="hidden"><div class="card" id="overlay-card"></div></div>
+
+<script>
+(function(){
+'use strict';
+
+var TWO_PI = Math.PI * 2;
+var F_MIN = 20, F_MAX = 20000;
+var DB_MIN = -40, DB_MAX = 6;
+var LEVEL_TIME = 120;
+
+var LEVELS = [
+  {
+    id: 'lp', name: 'TIEFPASS',
+    desc: 'Der Kunde braucht einen Tiefpass: Signale unterhalb der Grenzfrequenz fc sollen durchkommen, alles darüber wird gedämpft (−20 dB/Dekade). Justiere Widerstand R und Kondensator C so, dass deine Kurve (cyan) die Kundenvorgabe (gelb, gestrichelt) überdeckt.',
+    params: ['R','C']
+  },
+  {
+    id: 'hp', name: 'HOCHPASS',
+    desc: 'Jetzt ein Hochpass: Tiefe Frequenzen werden blockiert, hohe kommen durch. Auch hier bestimmen R und C die Grenzfrequenz fc — bring deine Kurve auf die gelbe Vorgabe, bevor die Zeit abläuft.',
+    params: ['R','C']
+  },
+  {
+    id: 'bp', name: 'BANDPASS',
+    desc: 'Der schwierigste Auftrag: Ein Bandpass lässt nur ein Frequenzband um die Mittenfrequenz f0 herum passieren. Mit R, L und C stellst du f0 UND die Bandbreite ein. Schaffst du die Abnahme einer echten Resonanzkurve?',
+    params: ['R','L','C']
+  }
+];
+
+var SPEC = {
+  R: { min: 1e3,   max: 1e6,  def: 2e4, label: 'Widerstand R',  unit: 'Ω' },
+  C: { min: 1e-9,  max: 1e-6, def: 1e-7, label: 'Kondensator C', unit: 'F' },
+  L: { min: 1e-3,  max: 1,    def: 1e-2, label: 'Spule L',       unit: 'H' },
+  F: { min: F_MIN, max: F_MAX, def: 1000, label: 'Prüffrequenz',  unit: 'Hz' }
+};
+
+var state = {
+  phase: 'menu',       // menu | intro | play | level-done | gameover | final
+  level: 0,
+  score: 0,
+  endAt: 0,
+  lastTickSec: -1,
+  target: null,        // {R,C,L}
+  params: { R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def },
+  checkFreq: 1000,
+  sweeping: false
+};
+
+/* ---------- Bauteil-Berechnung (Übertragungsfunktionen) ---------- */
+
+function fcOf(p){ return 1 / (TWO_PI * p.R * p.C); }
+function f0Of(p){ return 1 / (TWO_PI * Math.sqrt(p.L * p.C)); }
+function qOf(p){ return (1 / p.R) * Math.sqrt(p.L / p.C); }
+
+function gainDB(f, type, p){
+  if (type === 'lp'){
+    var x = f / fcOf(p);
+    return -10 * Math.log10(1 + x * x);
+  }
+  if (type === 'hp'){
+    var x2 = f / fcOf(p);
+    return 20 * Math.log10(x2) - 10 * Math.log10(1 + x2 * x2);
+  }
+  var w = TWO_PI * f;
+  var num = w * p.R * p.C;
+  var den = Math.hypot(1 - w * w * p.L * p.C, w * p.R * p.C);
+  return 20 * Math.log10(num / den);
+}
+
+function playerGain(f){ return gainDB(f, LEVELS[state.level].id, state.params); }
+function targetGain(f){ return gainDB(f, LEVELS[state.level].id, state.target); }
+
+function overlapPct(){
+  var n = 140, err = 0;
+  for (var i = 0; i < n; i++){
+    var f = F_MIN * Math.pow(F_MAX / F_MIN, i / (n - 1));
+    err += Math.abs(playerGain(f) - targetGain(f));
+  }
+  err /= n;
+  return Math.max(0, Math.round(100 - err * 4));
+}
+
+/* ---------- Helfer ---------- */
+
+function fmtVal(v, unit){
+  var steps = [[1e6,'M'],[1e3,'k'],[1,''],[1e-3,'m'],[1e-6,'µ'],[1e-9,'n']];
+  for (var i = 0; i < steps.length; i++){
+    var f = steps[i][0], p = steps[i][1];
+    if (v >= f) { return (v / f).toFixed(v / f >= 100 ? 0 : 1).replace('.', ',') + ' ' + p + unit; }
+  }
+  return v.toExponential(1) + ' ' + unit;
+}
+function fmtHz(f){
+  if (f >= 1000) return (f / 1000).toFixed(2).replace('.', ',') + ' kHz';
+  return Math.round(f) + ' Hz';
+}
+function fmtTime(s){
+  s = Math.max(0, Math.ceil(s));
+  var m = Math.floor(s / 60);
+  var r = s % 60;
+  return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+}
+function logMap(s, min, max){ return min * Math.pow(max / min, s / 1000); }
+function logUnmap(v, min, max){ return 1000 * Math.log(v / min) / Math.log(max / min); }
+
+function el(id){ return document.getElementById(id); }
+
+/* ---------- Zielvorgabe generieren ---------- */
+
+function genTarget(type){
+  var i, R, C, L;
+  if (type === 'lp' || type === 'hp'){
+    for (i = 0; i < 600; i++){
+      R = Math.pow(10, 3 + Math.random() * 3);
+      C = Math.pow(10, -9 + Math.random() * 3);
+      var fc = 1 / (TWO_PI * R * C);
+      if (fc >= 300 && fc <= 8000) return { R: R, C: C, L: null };
+    }
+    return { R: 15915, C: 1e-8, L: null };
+  }
+  for (i = 0; i < 2000; i++){
+    R = Math.pow(10, 3 + Math.random() * 3);
+    C = Math.pow(10, -9 + Math.random() * 3);
+    L = Math.pow(10, -3 + Math.random() * 3);
+    var f0 = 1 / (TWO_PI * Math.sqrt(L * C));
+    var q = (1 / R) * Math.sqrt(L / C);
+    if (f0 >= 400 && f0 <= 6000 && q >= 1.5 && q <= 9) return { R: R, C: C, L: L };
+  }
+  return { R: 4700, C: 1e-7, L: 0.01 };
+}
+
+/* ---------- Schaltplan (SVG) ---------- */
+
+function schematicSVG(type){
+  var head = '<svg viewBox="0 0 420 210" xmlns="http://www.w3.org/2000/svg">';
+  var tail = '</svg>';
+  var source =
+    '<line class="wire" x1="20" y1="90" x2="40" y2="90"/>' +
+    '<circle class="part" cx="58" cy="90" r="18"/>' +
+    '<text class="sym" x="58" y="97">~</text>' +
+    '<text class="cap" x="58" y="126" text-anchor="middle">Signalgeber</text>';
+  var ground = function(x, y){
+    return '<line class="wire" x1="'+(x-14)+'" y1="'+y+'" x2="'+(x+14)+'" y2="'+y+'"/>' +
+           '<line class="wire" x1="'+(x-9)+'"  y1="'+(y+5)+'" x2="'+(x+9)+'"  y2="'+(y+5)+'"/>' +
+           '<line class="wire" x1="'+(x-4)+'"  y1="'+(y+10)+'" x2="'+(x+4)+'"  y2="'+(y+10)+'"/>';
+  };
+  var out = function(x, y){
+    return '<line class="wire" x1="'+x+'" y1="'+y+'" x2="'+(x+60)+'" y2="'+y+'"/>' +
+           '<polygon points="'+(x+60)+','+(y-5)+' '+(x+72)+','+y+' '+(x+60)+','+(y+5)+'" fill="#8be9fd"/>' +
+           '<text class="cap" x="'+(x+76)+'" y="'+(y+4)+'">Ausgang</text>';
+  };
+
+  if (type === 'lp'){
+    return head + source +
+      '<line class="wire" x1="76" y1="90" x2="120" y2="90"/>' +
+      '<rect class="part" x="120" y="76" width="80" height="28"/>' +
+      '<text class="lbl" id="lbl-R" x="160" y="64" text-anchor="middle"></text>' +
+      '<line class="wire" x1="200" y1="90" x2="240" y2="90"/>' +
+      '<circle cx="240" cy="90" r="3.5" fill="#8be9fd"/>' +
+      out(240, 90) +
+      '<line class="wire" x1="240" y1="90" x2="240" y2="132"/>' +
+      '<line class="wire" x1="218" y1="138" x2="262" y2="138"/>' +
+      '<line class="wire" x1="218" y1="150" x2="262" y2="150"/>' +
+      '<text class="lbl" id="lbl-C" x="272" y="148"></text>' +
+      '<line class="wire" x1="240" y1="150" x2="240" y2="168"/>' +
+      ground(240, 172) + tail;
+  }
+  if (type === 'hp'){
+    return head + source +
+      '<line class="wire" x1="76" y1="90" x2="112" y2="90"/>' +
+      '<line class="wire" x1="118" y1="66" x2="118" y2="114"/>' +
+      '<line class="wire" x1="130" y1="66" x2="130" y2="114"/>' +
+      '<text class="lbl" id="lbl-C" x="124" y="52" text-anchor="middle"></text>' +
+      '<line class="wire" x1="130" y1="90" x2="170" y2="90"/>' +
+      '<circle cx="170" cy="90" r="3.5" fill="#8be9fd"/>' +
+      out(170, 90) +
+      '<line class="wire" x1="170" y1="90" x2="170" y2="110"/>' +
+      '<rect class="part" x="156" y="110" width="28" height="64"/>' +
+      '<text class="lbl" id="lbl-R" x="170" y="196" text-anchor="middle"></text>' +
+      '<line class="wire" x1="170" y1="174" x2="170" y2="212"/>' +
+      ground(170, 216) + tail;
+  }
+  /* Bandpass: Reihenschaltung R–L–C, Ausgang über R */
+  return head + source +
+    '<line class="wire" x1="76" y1="110" x2="110" y2="110"/>' +
+    '<rect class="part" x="110" y="96" width="80" height="28"/>' +
+    '<text class="lbl" id="lbl-R" x="150" y="84" text-anchor="middle"></text>' +
+    '<line class="wire" x1="190" y1="110" x2="226" y2="110"/>' +
+    '<circle cx="226" cy="110" r="3.5" fill="#8be9fd"/>' +
+    '<line class="wire" x1="226" y1="110" x2="226" y2="60"/>' +
+    '<polygon points="221,60 231,60 226,48" fill="#8be9fd"/>' +
+    '<text class="cap" x="240" y="58">Ausgang</text>' +
+    '<line class="wire" x1="226" y1="110" x2="258" y2="110"/>' +
+    '<path class="wire" d="M258,110 a11,11 0 0 1 22,0 a11,11 0 0 1 22,0 a11,11 0 0 1 22,0 a11,11 0 0 1 22,0"/>' +
+    '<text class="lbl" id="lbl-L" x="280" y="84" text-anchor="middle"></text>' +
+    '<line class="wire" x1="346" y1="110" x2="366" y2="110"/>' +
+    '<line class="wire" x1="366" y1="110" x2="366" y2="136"/>' +
+    '<line class="wire" x1="344" y1="142" x2="388" y2="142"/>' +
+    '<line class="wire" x1="344" y1="154" x2="388" y2="154"/>' +
+    '<text class="lbl" id="lbl-C" x="398" y="152"></text>' +
+    '<line class="wire" x1="366" y1="154" x2="366" y2="172"/>' +
+    ground(366, 178) + tail;
+}
+
+function updateSchematic(){
+  var box = el('schematic');
+  box.innerHTML = schematicSVG(LEVELS[state.level].id);
+  setSchematicLabels();
+}
+function setSchematicLabels(){
+  var set = function(id, txt){ var n = el(id); if (n) n.textContent = txt; };
+  set('lbl-R', 'R = ' + fmtVal(state.params.R, 'Ω'));
+  set('lbl-C', 'C = ' + fmtVal(state.params.C, 'F'));
+  set('lbl-L', 'L = ' + fmtVal(state.params.L, 'H'));
+}
+
+/* ---------- Bedienelemente (Slider) ---------- */
+
+function buildControls(){
+  var box = el('sliders');
+  box.innerHTML = '';
+  LEVELS[state.level].params.forEach(function(key){
+    var s = SPEC[key];
+    var row = document.createElement('div');
+    row.className = 'slider-row';
+    row.innerHTML =
+      '<label for="sl-' + key + '">' + s.label + '</label>' +
+      '<input type="range" id="sl-' + key + '" min="0" max="1000" value="500">' +
+      '<span class="val" id="val-' + key + '"></span>';
+    box.appendChild(row);
+    var sl = row.querySelector('input');
+    sl.value = Math.round(logUnmap(state.params[key], s.min, s.max));
+    sl.addEventListener('input', function(){
+      state.params[key] = logMap(Number(sl.value), s.min, s.max);
+      onParamsChanged();
+    });
+    row.dataset.key = key;
+  });
+  var frow = document.createElement('div');
+  frow.className = 'slider-row';
+  frow.innerHTML =
+    '<label for="sl-F">' + SPEC.F.label + ' (Sweep-Position)</label>' +
+    '<input type="range" id="sl-F" min="0" max="1000" value="500">' +
+    '<span class="val" id="val-F"></span>';
+  box.appendChild(frow);
+  var fsl = frow.querySelector('input');
+  fsl.value = Math.round(logUnmap(state.checkFreq, SPEC.F.min, SPEC.F.max));
+  fsl.addEventListener('input', function(){
+    state.checkFreq = logMap(Number(fsl.value), SPEC.F.min, SPEC.F.max);
+    onParamsChanged();
+  });
+  onParamsChanged();
+}
+
+function syncSliderPositions(){
+  LEVELS[state.level].params.forEach(function(key){
+    var s = SPEC[key];
+    var sl = el('sl-' + key);
+    if (sl) sl.value = Math.round(logUnmap(state.params[key], s.min, s.max));
+  });
+  var f = el('sl-F');
+  if (f) f.value = Math.round(logUnmap(state.checkFreq, SPEC.F.min, SPEC.F.max));
+}
+
+function onParamsChanged(){
+  LEVELS[state.level].params.forEach(function(key){
+    el('val-' + key).textContent = fmtVal(state.params[key], SPEC[key].unit);
+  });
+  el('val-F').textContent = fmtHz(state.checkFreq);
+  setSchematicLabels();
+  updateMatchMeter();
+  updateReadout();
+  drawPlot();
+}
+
+function updateMatchMeter(){
+  var pct = overlapPct();
+  el('match-bar').className = pct >= 85 ? '' : (pct >= 65 ? 'mid' : 'bad');
+  el('match-bar').style.width = pct + '%';
+  em('match-meter').firstChild.nodeValue = 'Überdeckung: ' + pct + ' % ';
+  return pct;
+}
+function em(id){ return el(id); }
+
+function updateReadout(){
+  var lv = LEVELS[state.level];
+  var html = '<span>Messung @ <b>' + fmtHz(state.checkFreq) + '</b>: ' +
+             '<b>' + playerGain(state.checkFreq).toFixed(1).replace('.', ',') + ' dB</b></span>';
+  if (lv.id === 'lp' || lv.id === 'hp'){
+    html += '<span>aktuelle Grenzfrequenz fc ≈ <b>' + fmtHz(fcOf(state.params)) + '</b></span>';
+  } else {
+    html += '<span>f0 ≈ <b>' + fmtHz(f0Of(state.params)) + '</b> · Q ≈ <b>' +
+            qOf(state.params).toFixed(2).replace('.', ',') + '</b></span>';
+  }
+  el('readout').innerHTML = html;
+}
+
+/* ---------- Bode-Diagramm ---------- */
+
+var plot = el('plot');
+var ctx = plot.getContext('2d');
+var PAD = { l: 46, r: 14, t: 16, b: 30 };
+
+function xOf(f){
+  return PAD.l + (Math.log10(f) - Math.log10(F_MIN)) /
+                 (Math.log10(F_MAX) - Math.log10(F_MIN)) * (plot.width - PAD.l - PAD.r);
+}
+function yOf(db){
+  return PAD.t + (DB_MAX - db) / (DB_MAX - DB_MIN) * (plot.height - PAD.t - PAD.b);
+}
+
+function drawPlot(){
+  var W = plot.width, H = plot.height;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = '#050912';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (var db = 0; db >= -40; db -= 10){
+    var y = yOf(db);
+    ctx.strokeStyle = '#17233f';
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    ctx.fillStyle = '#7d93b8';
+    ctx.fillText(db + ' dB', PAD.l - 6, y);
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  [100, 1000, 10000].forEach(function(f){
+    var x = xOf(f);
+    ctx.strokeStyle = '#17233f';
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
+    ctx.fillStyle = '#7d93b8';
+    ctx.fillText(f >= 1000 ? (f / 1000) + 'k' : String(f), x, H - PAD.b + 6);
+  });
+  [200, 500, 2000, 5000].forEach(function(f){
+    var x = xOf(f);
+    ctx.strokeStyle = '#0e1730';
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
+  });
+  ctx.fillStyle = '#7d93b8';
+  ctx.fillText('Frequenz (Hz, logarithmisch)', PAD.l + (W - PAD.l - PAD.r) / 2, H - PAD.b + 18);
+
+  if (!state.target) return;
+
+  var N = 180;
+  var ws = plot.width - PAD.l - PAD.r;
+  for (var i = 0; i < N; i++){
+    var f = F_MIN * Math.pow(F_MAX / F_MIN, i / (N - 1));
+    var pg = playerGain(f), tg = targetGain(f);
+    var x = PAD.l + (i / (N - 1)) * ws;
+    var yTop = yOf(Math.max(pg, tg));
+    var yBot = yOf(Math.min(pg, tg));
+    var d = Math.abs(pg - tg);
+    ctx.fillStyle = d < 2 ? 'rgba(0,255,140,.30)' : (d < 5 ? 'rgba(255,210,63,.20)' : 'rgba(255,92,92,.14)');
+    ctx.fillRect(x, yTop, ws / (N - 1) + 1, Math.max(1, yBot - yTop));
+  }
+
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  for (i = 0; i < N; i++){
+    f = F_MIN * Math.pow(F_MAX / F_MIN, i / (N - 1));
+    x = PAD.l + (i / (N - 1)) * ws;
+    if (i === 0) ctx.moveTo(x, yOf(targetGain(f)));
+    else ctx.lineTo(x, yOf(targetGain(f)));
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = '#2de2ff';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#2de2ff';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  for (i = 0; i < N; i++){
+    f = F_MIN * Math.pow(F_MAX / F_MIN, i / (N - 1));
+    x = PAD.l + (i / (N - 1)) * ws;
+    if (i === 0) ctx.moveTo(x, yOf(playerGain(f)));
+    else ctx.lineTo(x, yOf(playerGain(f)));
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  var cx = xOf(state.checkFreq);
+  ctx.strokeStyle = 'rgba(230,241,255,.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, H - PAD.b); ctx.stroke();
+  var cy = yOf(playerGain(state.checkFreq));
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, TWO_PI); ctx.fill();
+
+  var txt = fmtHz(state.checkFreq) + ' → ' + playerGain(state.checkFreq).toFixed(1) + ' dB';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'left';
+  var tw = ctx.measureText(txt).width;
+  var lx = Math.min(cx + 8, W - PAD.r - tw - 10);
+  ctx.fillStyle = 'rgba(13,20,38,.85)';
+  ctx.fillRect(lx - 4, PAD.t + 2, tw + 8, 18);
+  ctx.fillStyle = '#e6f1ff';
+  ctx.fillText(txt, lx, PAD.t + 11);
+}
+
+/* ---------- Arcade-Chiptune (Web Audio API) ---------- */
+
+var audio = { ctx: null, master: null, timer: null, step: 0, nextT: 0 };
+var BPM = 132;
+var STEP_DUR = 60 / BPM / 2;
+var BASS = [110,0,110,0,131,0,110,0, 98,0,98,0,131,0,147,0];
+var LEAD = [440,523,659,523, 440,0,392,440, 349,440,523,440, 659,523,440,392];
+
+function playNote(freq, t, dur, type, vel){
+  var o = audio.ctx.createOscillator();
+  var g = audio.ctx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vel, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(audio.master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function playNoise(t, dur, vel){
+  var len = Math.max(1, Math.floor(audio.ctx.sampleRate * dur));
+  var buf = audio.ctx.createBuffer(1, len, audio.ctx.sampleRate);
+  var d = buf.getChannelData(0);
+  for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  var src = audio.ctx.createBufferSource();
+  src.buffer = buf;
+  var g = audio.ctx.createGain();
+  g.gain.value = vel;
+  src.connect(g); g.connect(audio.master);
+  src.start(t);
+}
+function schedule(){
+  while (audio.nextT < audio.ctx.currentTime + 0.15){
+    var s = audio.step % 16;
+    if (BASS[s]) playNote(BASS[s], audio.nextT, STEP_DUR * 0.9, 'triangle', 0.5);
+    if (LEAD[s]) playNote(LEAD[s], audio.nextT, STEP_DUR * 0.55, 'square', 0.22);
+    if (s % 4 === 2) playNoise(audio.nextT, 0.05, 0.12);
+    audio.step++;
+    audio.nextT += STEP_DUR;
+  }
+}
+function toggleMusic(){
+  if (!audio.ctx){
+    var AC = window.AudioContext || window.webkitAudioContext;
+    audio.ctx = new AC();
+    audio.master = audio.ctx.createGain();
+    audio.master.gain.value = 0.14;
+    audio.master.connect(audio.ctx.destination);
+    audio.nextT = audio.ctx.currentTime + 0.05;
+    audio.timer = setInterval(schedule, 40);
+  } else if (audio.ctx.state === 'suspended'){
+    audio.ctx.resume();
+  }
+  audio.on = !audio.on;
+  audio.master.gain.value = audio.on ? 0.14 : 0;
+  el('btn-music').textContent = audio.on ? '🎵 Musik: AN' : '🎵 Musik: AUS';
+}
+function sfx(seq, type){
+  if (!audio.ctx) return;
+  var t = audio.ctx.currentTime;
+  seq.forEach(function(n, i){
+    playNote(n, t + i * 0.12, 0.18, type || 'square', 0.3);
+  });
+}
+function sfxFail(){
+  if (!audio.ctx) return;
+  var t = audio.ctx.currentTime;
+  var o = audio.ctx.createOscillator();
+  var g = audio.ctx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(160, t);
+  o.frequency.linearRampToValueAtTime(60, t + 0.5);
+  g.gain.setValueAtTime(0.3, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+  o.connect(g); g.connect(audio.master);
+  o.start(t); o.stop(t + 0.6);
+}
+
+/* ---------- Spielablauf ---------- */
+
+function showOverlay(html){
+  el('overlay-card').innerHTML = html;
+  el('overlay').classList.remove('hidden');
+}
+function hideOverlay(){ el('overlay').classList.add('hidden'); }
+
+function showStartScreen(){
+  state.phase = 'menu';
+  showOverlay(
+    '<h2>⚡ FILTER-WERKSTATT</h2>' +
+    '<p>Du sitzt in der Entwicklungsabteilung: Drei Kundenaufträge — <b class="big">Tiefpass, Hochpass, Bandpass</b>. ' +
+    'Die Schaltung ist vorgegeben, aber die Bauteile sind falsch bestückt!</p>' +
+    '<ul>' +
+    '<li>⏱ <b>2 Minuten</b> pro Auftrag — die Uhr läuft, sobald du startest.</li>' +
+    '<li>🎚 Stelle <b>R, C (und L)</b> per Slider ein, bis deine cyanfarbene Messkurve die gelbe Kundenvorgabe überdeckt.</li>' +
+    '<li>📊 Der Sweep-Punkt zeigt dir den Messwert an einer Frequenz. Fahre ihn mit dem Sweep über das Spektrum.</li>' +
+    '<li>✅ Bei <b>≥ 85&nbsp;%</b> Überdeckung nimmt die Qualitätsabnahme den Filter ab. Restzeit gibt Bonuspunkte.</li>' +
+    '</ul>' +
+    '<button data-action="begin">🔧 Werkstatt betreten</button>'
+  );
+}
+
+function showLevelIntro(){
+  state.phase = 'intro';
+  var lv = LEVELS[state.level];
+  el('hud-level').textContent = 'Level ' + (state.level + 1) + '/3 · ' + lv.name;
+  el('task-title').textContent = 'AUFTRAG ' + (state.level + 1) + ': ' + lv.name + ' BESTÜCKEN';
+  el('task-desc').textContent = lv.desc;
+  state.target = genTarget(lv.id);
+  state.params = { R: SPEC.R.def, C: SPEC.C.def, L: SPEC.L.def };
+  state.checkFreq = 1000;
+  state.sweeping = false;
+  el('btn-sweep').textContent = '▶ Sweep starten';
+  updateSchematic();
+  buildControls();
+  drawPlot();
+  el('hud-timer').textContent = fmtTime(LEVEL_TIME);
+  el('hud-timer').classList.remove('danger');
+  showOverlay(
+    '<h2>' + lv.name + '</h2>' +
+    '<p>' + lv.desc + '</p>' +
+    '<p class="big">⏱ 2:00 Minuten — Bereit?</p>' +
+    '<button data-action="start-level">Start!</button>'
+  );
+}
+
+function startLevel(){
+  hideOverlay();
+  state.phase = 'play';
+  state.endAt = Date.now() + LEVEL_TIME * 1000;
+  state.lastTickSec = -1;
+}
+
+function tickTimer(){
+  if (state.phase !== 'play') return;
+  var remain = (state.endAt - Date.now()) / 1000;
+  el('hud-timer').textContent = fmtTime(remain);
+  var sec = Math.ceil(remain);
+  if (sec !== state.lastTickSec){
+    state.lastTickSec = sec;
+    if (sec <= 10 && sec > 0){
+      el('hud-timer').classList.add('danger');
+      if (audio.ctx && audio.on) playNote(1000, audio.ctx.currentTime, 0.04, 'square', 0.15);
+    }
+  }
+  if (remain <= 0) endLevelFail();
+}
+
+function endLevelFail(){
+  state.phase = 'gameover';
+  state.sweeping = false;
+  sfxFail();
+  el('hud-timer').classList.add('danger');
+  showOverlay(
+    '<h2>⏰ ZEIT ABGELAUFEN!</h2>' +
+    '<p>Die Abnahme ist geschlossen. Der Auftrag <b class="big">' + LEVELS[state.level].name +
+    '</b> musste zurückgestellt werden.</p>' +
+    '<p>Aktuelle Überdeckung war ' + overlapPct() + ' % — beim nächsten Versuch klappt es!</p>' +
+    '<button data-action="retry">🔁 Auftrag wiederholen</button>'
+  );
+}
+
+function checkFilter(){
+  if (state.phase !== 'play') return;
+  var pct = overlapPct();
+  if (pct >= 85){
+    var remain = Math.max(0, Math.ceil((state.endAt - Date.now()) / 1000));
+    var bonus = remain * 5;
+    var pts = pct * 10 + bonus;
+    state.score += pts;
+    state.phase = 'level-done';
+    el('hud-score').textContent = String(state.score);
+    sfx([523, 659, 784, 1047], 'square');
+    var last = state.level === LEVELS.length - 1;
+    if (last){
+      showOverlay(
+        '<h2>🏆 GESCHAFFT!</h2>' +
+        '<p>Alle drei Filter haben die Abnahme bestanden!</p>' +
+        '<p class="big">Endstand: ' + state.score + ' Punkte</p>' +
+        '<button data-action="restart">🎮 Nochmal spielen</button>'
+      );
+      state.phase = 'final';
+    } else {
+      showOverlay(
+        '<h2>✅ FILTER ABGENOMMEN!</h2>' +
+        '<p>Überdeckung: <b class="big">' + pct + ' %</b> · Zeitbonus: +' + bonus + '</p>' +
+        '<p class="big">+' + pts + ' Punkte</p>' +
+        '<button data-action="next">Weiter zum nächsten Auftrag ➜</button>'
+      );
+    }
+  } else {
+    sfx([180, 150], 'sawtooth');
+    var m = el('match-meter');
+    m.style.borderColor = 'var(--red)';
+    setTimeout(function(){ m.style.borderColor = ''; }, 400);
+  }
+}
+
+function startSweep(){
+  if (state.phase !== 'play' || state.sweeping) return;
+  state.sweeping = true;
+  el('btn-sweep').textContent = '⏸ Sweep läuft …';
+  var t0 = performance.now(), dur = 2600;
+  var f0 = state.checkFreq;
+  var span = Math.log(F_MAX) - Math.log(F_MIN);
+  function step(now){
+    if (!state.sweeping) return;
+    var k = (now - t0) / dur;
+    if (k >= 1){
+      state.sweeping = false;
+      el('btn-sweep').textContent = '▶ Sweep starten';
+      return;
+    }
+    var logF = Math.log(f0) + k * span * 0.5;
+    if (logF > Math.log(F_MAX)) logF = Math.log(F_MIN) + (logF - Math.log(F_MAX));
+    state.checkFreq = Math.exp(logF);
+    syncSliderPositions();
+    onParamsChanged();
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------- Events ---------- */
+
+document.addEventListener('click', function(ev){
+  var b = ev.target.closest('button');
+  if (!b) return;
+  var act = b.getAttribute('data-action');
+  if (act === 'begin'){ toggleMusic(); showLevelIntro(); }
+  else if (act === 'start-level'){ startLevel(); }
+  else if (act === 'retry'){ showLevelIntro(); }
+  else if (act === 'next'){ state.level++; showLevelIntro(); }
+  else if (act === 'restart'){ state.score = 0; el('hud-score').textContent = '0'; state.level = 0; showLevelIntro(); }
+});
+el('btn-music').addEventListener('click', toggleMusic);
+el('btn-sweep').addEventListener('click', startSweep);
+el('btn-check').addEventListener('click', checkFilter);
+setInterval(tickTimer, 200);
+
+showStartScreen();
+drawPlot();
+})();
+</script>
+</body>
+</html>
