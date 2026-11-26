@@ -39,15 +39,15 @@ Läuft die Zeit ab, muss der Auftrag wiederholt werden.
 
 | Level | Filter | Schaltung | Einstellbare Bauteile | Ziel |
 |-------|--------|-----------|----------------------|------|
-| 1 | **Tiefpass** | RC-Tiefpass | R, C | Tiefe Frequenzen passieren, hohe werden mit −20 dB/Dekade gedämpft |
-| 2 | **Hochpass** | RC-Hochpass | R, C | Tiefe Frequenzen werden blockiert, hohe passieren |
+| 1 | **Tiefpass** | Zweistufiger RC-Tiefpass (2. Ordnung) | R1, C1, R2, C2 | Tiefe Frequenzen passieren, hohe werden mit −40 dB/Dekade gedämpft |
+| 2 | **Hochpass** | Zweistufiger RC-Hochpass (2. Ordnung) | R1, C1, R2, C2 | Tiefe Frequenzen werden blockiert, hohe passieren |
 | 3 | **Bandpass** | RLC-Reihenschaltung | R, L, C | Nur ein Frequenzband um die Resonanzfrequenz f0 kommt durch |
 
 ### Steuerung
 
 | Element | Funktion |
 |---------|----------|
-| **Slider R / C / L** | Bauteilwerte einstellen (logarithmisch über den gesamten Wertebereich) |
+| **Slider R1 / C1 / R2 / C2 (bzw. R / L / C beim Bandpass)** | Bauteilwerte einstellen (logarithmisch über den gesamten Wertebereich) |
 | **Slider Prüffrequenz** | Position des Messpunkts im Spektrum |
 | **▶ Sweep starten** | Messpunkt fährt automatisch über 20 Hz – 20 kHz |
 | **✅ Filter abnehmen** | Abnahme-Check: ≥ 85 % Überdeckung = bestanden |
@@ -73,12 +73,15 @@ Punkte (pro Level) = Überdeckung × 10 + Restzeit in Sekunden × 5
 
 Das Spiel rechnet mit echten Übertragungsfunktionen — was du siehst, ist keine gestellte Animation:
 
-### Tiefpass / Hochpass (RC)
+### Tiefpass / Hochpass (je zwei RC-Stufen)
+
+Jede Stufe trägt ihre eigene Sperrfrequenz bei — die Gesamt-Kurve ist die **Summe beider Stufen** in dB. Liegen fc1 und fc2 gleichauf, entsteht ein runder 2.-Ordnungs-Knick; liegen sie auseinander, bildet sich ein Knie aus. Die Kundenforderungen nutzen das aus.
 
 ```
-Grenzfrequenz:   fc = 1 / (2π · R · C)
-Tiefpass:        A(f) = −10 · log10(1 + (f/fc)²)                       [dB]
-Hochpass:        A(f) = 20 · log10(f/fc) − 10 · log10(1 + (f/fc)²)     [dB]
+Grenzfrequenzen: fc1 = 1 / (2π · R1 · C1)
+                 fc2 = 1 / (2π · R2 · C2)
+Tiefpass:        A(f) = Σ Stufen   −10 · log10(1 + (f/fci)²)                  [dB]
+Hochpass:        A(f) = Σ Stufen   ( 20 · log10(f/fci) − 10 · log10(1 + (f/fci)²) )   [dB]
 ```
 
 ### Bandpass (RLC-Reihenschaltung, Ausgang über R)
@@ -107,7 +110,8 @@ Jede Kundenvorgabe ist zufällig generiert, aber **immer lösbar**.
 ## 💡 Tipps
 
 - **Sweep nutzen:** Fahre zuerst einmal über das Spektrum und finde, wo deine Kurve vom Ziel abweicht.
-- **−3-dB-Punkt:** Beim Tief-/Hochpass liegt die Grenzfrequenz fc dort, wo die Kurve 3 dB unter dem Durchlassbereich liegt.
+- **−3-dB-Punkt:** Beim Tief-/Hochpass liegt die effektive Grenzfrequenz dort, wo die Kurve 3 dB unter dem Durchlassbereich liegt — bei zwei gleichauf liegenden Stufen genau bei fc1 = fc2.
+- **Zwei Stufen, ein Ziel:** Stelle zuerst eine Stufe grob ein (z. B. per Sweep den Knick finden), dann die zweite — die Summenkurve ändert sich mit jeder Änderung sofort.
 - **Resonanzspitze:** Beim Bandpass stellen L und C gemeinsam die Mittenfrequenz ein — R ändert nur die Bandbreite. Erst f0 treffen, dann mit R schärfen.
 - **Ruhig bleiben:** Bei 10 Sekunden Restzeit tippt die Uhr rot und es gibt akustische Warnsignale.
 
